@@ -40,9 +40,6 @@ app.use('/api/admin', require('./routes/admin'));
 try {
   mongoose
     .connect(process.env.DATABASE_CONNECTION_STRING)
-    .then(() => {
-      app.listen(PORT);
-    })
     .catch((err) => {
       console.error(err.message);
       console.error('Something went wrong while connecting to MongoDB!!!');
