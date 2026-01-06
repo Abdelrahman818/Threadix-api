@@ -38,7 +38,7 @@ async function sendMail(req, res) {
         </a>
       `,
     };
-
+    console.log('Sending verification email to:', normalizedEmail);
     await transporter.sendMail(mailOptions);
 
     return res.status(200).json({
