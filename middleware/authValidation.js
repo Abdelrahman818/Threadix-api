@@ -78,7 +78,7 @@ function signupValidation(req, res, next) {
       successful: false,
       msg: error.details[0].message,
     });
-
+  console.log('Signup validation passed');
   next();
 }
 
