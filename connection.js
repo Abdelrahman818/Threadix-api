@@ -35,11 +35,9 @@ app.use('/api/test', require('./routes/test'));
 
 // Run server and Database connection
 try {
+  app.listen(PORT, () => console.log("Server is running..."));
   mongoose
     .connect(process.env.DATABASE_CONNECTION_STRING)
-    .then(() => {
-      app.listen(PORT, () => console.log("Server is running..."));
-    })
     .catch((err) => {
       console.error(err.message);
       console.error('Something went wrong while connecting to MongoDB!!!');
