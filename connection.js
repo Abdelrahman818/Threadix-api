@@ -8,7 +8,7 @@ const path = require('path');
 
 // App init
 const app = express();
-const PORT = 80;
+const PORT = 8080;
 require('dotenv').config();
 app.use(express.json());
 app.use(cookies());
@@ -37,6 +37,9 @@ app.use('/api/test', require('./routes/test'));
 try {
   mongoose
     .connect(process.env.DATABASE_CONNECTION_STRING)
+    .then(() => {
+      app.listen(PORT, () => console.log("Server is running..."));
+    })
     .catch((err) => {
       console.error(err.message);
       console.error('Something went wrong while connecting to MongoDB!!!');
