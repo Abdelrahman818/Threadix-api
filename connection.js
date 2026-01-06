@@ -35,7 +35,6 @@ app.use('/api/test', require('./routes/test'));
 
 // Run server and Database connection
 try {
-  app.listen(PORT);
   mongoose
     .connect(process.env.DATABASE_CONNECTION_STRING)
     .catch((err) => {
