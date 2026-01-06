@@ -8,7 +8,7 @@ const path = require('path');
 
 // App init
 const app = express();
-const PORT = 80;
+const PORT = process.env.PORT || 3000;
 require('dotenv').config();
 app.use(express.json());
 app.use(cookies());
@@ -21,7 +21,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 //   max: 200,
 // }));
 app.use(cors({
-  origin: process.env.FRONTEND_URL, // لازم يكون مضبوط
+  origin: process.env.FRONTEND_URL,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
