@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const cookies = require('cookie-parser');
 const helmet = require('helmet');
-const expressRateLimit = require('express-rate-limit');
+// const expressRateLimit = require('express-rate-limit');
 const path = require('path');
 
 // App init
