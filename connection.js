@@ -8,7 +8,7 @@ const path = require('path');
 
 // App init
 const app = express();
-const PORT = 8080;
+const PORT = 80;
 require('dotenv').config();
 app.use(express.json());
 app.use(cookies());
