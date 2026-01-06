@@ -8,7 +8,7 @@ const path = require('path');
 
 // App init
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = 80;
 require('dotenv').config();
 app.use(express.json());
 app.use(cookies());
@@ -39,7 +39,7 @@ app.use('/api/test', require('./routes/test'));
 
 // Run server and Database connection
 try {
-  app.listen();
+  app.listen(PORT);
   mongoose
     .connect(process.env.DATABASE_CONNECTION_STRING)
     .catch((err) => {
