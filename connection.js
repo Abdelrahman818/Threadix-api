@@ -20,7 +20,12 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 //   windowMs: 5 * 60 * 1000,
 //   max: 200,
 // }));
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL, // لازم يكون مضبوط
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // Initialize routes
 app.use('/api/auth', require('./routes/auth'));
