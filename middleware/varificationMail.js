@@ -18,14 +18,27 @@ async function sendMail(req, res) {
       { expiresIn: '10m' }
     );
 
+    // const transporter = nodemailer.createTransport({
+    //   service: 'gmail',
+    //   auth: {
+    //     user: 'codecraft920@gmail.com',
+    //     pass: process.env.GMAIL_APP_PASS,
+    //   },
+    // });
+
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
       auth: {
         user: 'codecraft920@gmail.com',
         pass: process.env.GMAIL_APP_PASS,
       },
+      tls: {
+        rejectUnauthorized: false,
+      },
     });
-
+    
     const mailOptions = {
       from: 'Code Craft <codecraft920@gmail.com>',
       to: normalizedEmail,
