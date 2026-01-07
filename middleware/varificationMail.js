@@ -39,7 +39,10 @@ async function sendMail(req, res) {
       `,
     };
     console.log('Sending verification email to:', normalizedEmail);
-    await transporter.sendMail(mailOptions);
+    
+    transporter.sendMail(mailOptions)
+      .then(info => console.log(info.response))
+      .catch(error => console.error(error.message));
 
     return res.status(200).json({
       successful: true,
