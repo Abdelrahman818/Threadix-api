@@ -39,7 +39,14 @@ async function sendMail(req, res) {
       `,
     };
     console.log('Sending verification email to:', normalizedEmail);
-    
+    transporter.verify((err, success) => {
+      if (err) {
+        console.error('SMTP ERROR:', err);
+      } else {
+        console.log('SMTP READY');
+      }
+    });
+
     transporter.sendMail(mailOptions)
       .then(info => console.log(info.response))
       .catch(error => console.error(error.message));
