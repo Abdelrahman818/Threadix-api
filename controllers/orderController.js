@@ -1,5 +1,6 @@
 const Orders = require('../models/Orders');
 const Users = require('../models/Users');
+const Products = require('../models/Products');
 const jwt = require('jsonwebtoken');
 
 /**
@@ -60,9 +61,27 @@ async function createOrder(req, res) {
 async function getAllOrders(req, res) {
   try {
     const orders = await Orders.find().sort({ createdAt: -1 });
+    
+    // Populate missing product names/prices for old orders
+    const enrichedOrders = await Promise.all(orders.map(async (order) => {
+      const orderObj = order.toObject();
+      if (orderObj.items) {
+        for (let item of orderObj.items) {
+          if (!item.name || !item.price) {
+            const product = await Products.findById(item.productId);
+            if (product) {
+              item.name = item.name || product.title;
+              item.price = item.price || product.salePrice || product.price;
+            }
+          }
+        }
+      }
+      return orderObj;
+    }));
+
     return res.status(200).json({
       successful: true,
-      data: orders,
+      data: enrichedOrders,
     });
   } catch (error) {
     return res.status(500).json({
@@ -121,9 +140,26 @@ async function getUserOrders(req, res) {
       }
     }
 
+    // Populate missing product names/prices for old orders
+    const enrichedOrders = await Promise.all(orders.map(async (order) => {
+      const orderObj = order.toObject();
+      if (orderObj.items) {
+        for (let item of orderObj.items) {
+          if (!item.name || !item.price) {
+            const product = await Products.findById(item.productId);
+            if (product) {
+              item.name = item.name || product.title;
+              item.price = item.price || product.salePrice || product.price;
+            }
+          }
+        }
+      }
+      return orderObj;
+    }));
+
     return res.status(200).json({
       successful: true,
-      data: orders,
+      data: enrichedOrders,
     });
   } catch (error) {
     console.error('Error in getUserOrders:', error);
@@ -152,16 +188,28 @@ async function getOrderByOrderId(req, res) {
 
     const order = await Orders.findOne({ orderId: parseInt(orderId) });
 
-    if (!order) {
-      return res.status(404).json({
-        successful: false,
-        msg: 'Order not found',
+    if (order) {
+      const orderObj = order.toObject();
+      if (orderObj.items) {
+        for (let item of orderObj.items) {
+          if (!item.name || !item.price) {
+            const product = await Products.findById(item.productId);
+            if (product) {
+              item.name = item.name || product.title;
+              item.price = item.price || product.salePrice || product.price;
+            }
+          }
+        }
+      }
+      return res.status(200).json({
+        successful: true,
+        data: orderObj,
       });
     }
 
-    return res.status(200).json({
-      successful: true,
-      data: order,
+    return res.status(404).json({
+      successful: false,
+      msg: 'Order not found',
     });
   } catch (error) {
     return res.status(500).json({

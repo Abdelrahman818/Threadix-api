@@ -9,6 +9,8 @@ const schema = mongoose.Schema({
   phone: String,
   items: [{
     productId: String,
+    name: String,
+    price: Number,
     quantity: String,
     color: {
       type: String,
@@ -20,6 +22,10 @@ const schema = mongoose.Schema({
     },
   }],
   totalPrice: Number,
+  shippingPrice: {
+    type: Number,
+    default: 0,
+  },
   paymentMethod: String,
   paymentStatus: {
     type: String,
@@ -32,6 +38,7 @@ const schema = mongoose.Schema({
     enum: ['pending', 'in delivery', 'completed', 'cancelled'],
   },
   address: String,
+  note: String,
 }, {
   timestamps: true,
 });

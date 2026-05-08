@@ -1,25 +1,23 @@
+// Dotenv
+require('dotenv').config();
+
+// Preparing required modules
 const mongoose = require('mongoose');
 const express = require('express');
 const cors = require('cors');
 const cookies = require('cookie-parser');
 const helmet = require('helmet');
-// const expressRateLimit = require('express-rate-limit');
 const path = require('path');
 
 // App init
 const app = express();
-const PORT = process.env.PORT || 3000;
-require('dotenv').config();
+const PORT = process.env.PORT || 8080;
 app.use(express.json());
 app.use(cookies());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Security
-// app.use(helmet());
-// app.use(expressRateLimit({
-//   windowMs: 5 * 60 * 1000,
-//   max: 200,
-// }));
+app.use(helmet());
 app.use(cors({
   origin: process.env.FRONTEND_URL,
   credentials: true,
@@ -38,11 +36,22 @@ app.use('/api/orders', require('./routes/orders'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/test', require('./routes/test'));
 
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({
+      successful: false,
+      msg: 'Invalid JSON body',
+    });
+  }
+  return next(err);
+});
+
 // Run server and Database connection
 try {
-  app.listen(PORT, () => console.log("Server is running..."));
+  app.listen(PORT, () => console.log("Server is running at port " + PORT));
   mongoose
     .connect(process.env.DATABASE_CONNECTION_STRING)
+    .then(() => console.log('Database is connected successfully!!!'))
     .catch((err) => {
       console.error(err.message);
       console.error('Something went wrong while connecting to MongoDB!!!');

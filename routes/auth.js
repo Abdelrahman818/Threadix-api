@@ -17,12 +17,14 @@ const {
 const {
   login,
   signup,
+  socialAuth,
   logout,
   getCurrentUser,
 } = require('../controllers/authController.js');
 
 route.post('/login', loginValidation, login);
 route.post('/signup', signupValidation, mailValidation);
+route.post('/social', socialAuth);
 
 route.get('/verifyUser', authorizingUser, signup);
 route.get('/verifyToken', verifyToken);

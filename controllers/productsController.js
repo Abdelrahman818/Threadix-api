@@ -1,4 +1,6 @@
 const Products = require('../models/Products');
+const fs = require('fs').promises;
+const path = require('path');
 
 /**
  * @method GET
@@ -154,6 +156,30 @@ async function updateProduct(req, res) {
 async function deleteProduct(req, res) {
   try {
     const { id } = req.params;
+    
+    // Find the product to get image paths
+    const product = await Products.findById(id);
+    if (!product) {
+      return res.status(404).json({
+        successful: false,
+        msg: 'Product not found',
+      });
+    }
+
+    // Delete images from file system
+    if (product.images && product.images.length > 0) {
+      for (const imgPath of product.images) {
+        // imgPath is like "/uploads/filename.jpg"
+        const absolutePath = path.join(__dirname, '..', imgPath);
+        try {
+          await fs.unlink(absolutePath);
+        } catch (err) {
+          console.error(`Failed to delete image: ${absolutePath}`, err);
+          // Continue deleting other images even if one fails
+        }
+      }
+    }
+
     await Products.findByIdAndDelete(id);
     return res.status(200).json({
       successful: true,

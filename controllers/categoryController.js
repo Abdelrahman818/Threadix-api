@@ -1,5 +1,7 @@
 const Cat = require('../models/Categories');
 const Products = require('../models/Products');
+const fs = require('fs').promises;
+const path = require('path');
 
 /**
  * @method GET
@@ -70,18 +72,18 @@ async function modifyCategory(req, res) {
   try {
     const { id } = req.params;
     const updateData = { ...req.body };
-    
+
     // If a new image is uploaded, update the imgUrl
     if (req.file) {
       updateData.imgUrl = `/uploads/${req.file.filename}`;
     }
-    
+
     // Convert status string to isActive boolean if provided
     if (updateData.status) {
       updateData.isActive = updateData.status === 'active' || updateData.status === 'true';
       delete updateData.status; // Remove status as model uses isActive
     }
-    
+
     const cat = await Cat.findByIdAndUpdate(id, updateData, { new: true });
     return res.status(200).json({
       successful: true,
@@ -103,6 +105,26 @@ async function modifyCategory(req, res) {
 async function removeCategory(req, res) {
   try {
     const { id } = req.params;
+
+    // Find category to get image path
+    const category = await Cat.findById(id);
+    if (!category) {
+      return res.status(404).json({
+        successful: false,
+        msg: 'Category not found',
+      });
+    }
+
+    // Delete image if exists
+    if (category.imgUrl) {
+      const absolutePath = path.join(__dirname, '..', category.imgUrl);
+      try {
+        await fs.unlink(absolutePath);
+      } catch (err) {
+        console.error(`Failed to delete category image: ${absolutePath}`, err);
+      }
+    }
+
     await Cat.findByIdAndDelete(id);
     return res.status(200).json({
       successful: true,

@@ -102,7 +102,7 @@ async function addItemToCart(req, res) {
       });
     }
 
-    const { productId, quantity, color, size } = req.body;
+    const { productId, quantity } = req.body;
 
     if (!productId || !quantity)
       return res.status(400).json({
@@ -116,11 +116,10 @@ async function addItemToCart(req, res) {
       userCart = new Cart({ userId, items: [] });
     }
 
-    // Check if item with same productId, color, size exists
+    // Threadix now treats product quantity as the only cart choice.
+    // Colors and sizes remain visible on product pages, but are not order variants.
     const existingItemIndex = userCart.items.findIndex(
-      item => item.productId === productId &&
-        item.color === color &&
-        item.size === size
+      item => item.productId === productId
     );
 
     if (existingItemIndex > -1) {
@@ -132,8 +131,6 @@ async function addItemToCart(req, res) {
       userCart.items.push({
         productId,
         quantity: parseInt(quantity),
-        color: color || null,
-        size: size || null,
       });
     }
 

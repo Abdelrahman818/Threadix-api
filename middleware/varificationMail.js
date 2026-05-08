@@ -1,10 +1,13 @@
 const jwt = require('jsonwebtoken');
+const { Resend } = require('resend');
 const nodemailer = require('nodemailer');
 
 async function sendMail(req, res) {
   try {
     // Normalize email (lowercase and trim)
     const normalizedEmail = req.body.email.toLowerCase().trim();
+    
+    const resend = new Resend(process.env.RESEND_API_KEY);
 
     const payload = {
       name: req.body.name,
@@ -18,24 +21,11 @@ async function sendMail(req, res) {
       { expiresIn: '10m' }
     );
 
-    // const transporter = nodemailer.createTransport({
-    //   service: 'gmail',
-    //   auth: {
-    //     user: 'codecraft920@gmail.com',
-    //     pass: process.env.GMAIL_APP_PASS,
-    //   },
-    // });
-
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+      service: 'gmail',
       auth: {
         user: 'codecraft920@gmail.com',
         pass: process.env.GMAIL_APP_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false,
       },
     });
     
@@ -51,18 +41,8 @@ async function sendMail(req, res) {
         </a>
       `,
     };
-    console.log('Sending verification email to:', normalizedEmail);
-    transporter.verify((err, success) => {
-      if (err) {
-        console.error('SMTP ERROR:', err);
-      } else {
-        console.log('SMTP READY');
-      }
-    });
 
-    transporter.sendMail(mailOptions)
-      .then(info => console.log(info.response))
-      .catch(error => console.error(error.message));
+    await transporter.sendMail(mailOptions);
 
     return res.status(200).json({
       successful: true,

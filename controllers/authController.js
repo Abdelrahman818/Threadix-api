@@ -1,7 +1,45 @@
 const Users = require('../models/Users');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const cookie = require('cookie-parser');
+const getFirebaseAdminApp = require('../config/firebaseAdmin');
+
+const AUTH_COOKIE_NAME = 'token';
+const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+function getAuthCookieOptions(maxAge = AUTH_COOKIE_MAX_AGE) {
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'Strict' : 'Lax',
+    maxAge,
+  };
+}
+
+function setAuthCookie(res, userId) {
+  const token = jwt.sign(
+    { id: userId },
+    process.env.TOKEN_SECRET_KEY,
+    { expiresIn: '1w' }
+  );
+
+  res.cookie(AUTH_COOKIE_NAME, token, getAuthCookieOptions());
+}
+
+function normalizeEmail(email) {
+  return email?.toLowerCase().trim();
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function findUserByEmail(email) {
+  return Users.findOne({
+    email: { $regex: new RegExp(`^${escapeRegex(email)}$`, 'i') },
+  });
+}
 
 async function login(req, res) {
   try {
@@ -17,32 +55,75 @@ async function login(req, res) {
   }
 }
 
+async function socialAuth(req, res) {
+  try {
+    const { idToken, name: requestedName } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        successful: false,
+        msg: 'Firebase ID token is required',
+      });
+    }
+
+    const firebaseAdmin = getFirebaseAdminApp();
+    const decodedToken = await firebaseAdmin.auth().verifyIdToken(idToken);
+    const email = normalizeEmail(decodedToken.email);
+    const name = requestedName || decodedToken.name || decodedToken.email?.split('@')[0] || 'Threadix user';
+
+    if (!email) {
+      return res.status(400).json({
+        successful: false,
+        msg: 'Your social account must include an email address',
+      });
+    }
+
+    let user = await findUserByEmail(email);
+
+    if (!user) {
+      const unusablePassword = await bcrypt.hash(`firebase:${decodedToken.uid}:${Date.now()}`, 10);
+      user = await Users.create({
+        name,
+        email,
+        pwd: unusablePassword,
+        isActive: true,
+      });
+    }
+
+    setAuthCookie(res, user._id);
+
+    return res.status(200).json({
+      successful: true,
+      msg: 'Logged in successfully',
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isAdmin: user.isAdmin,
+      },
+    });
+  } catch (error) {
+    return res.status(401).json({
+      successful: false,
+      msg: error.message || 'Social authentication failed',
+    });
+  }
+}
+
 async function signup(req, res) {
   try {
     const { name, email, pwd } = req.user;
 
     // Normalize email (lowercase and trim)
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = normalizeEmail(email);
 
     // Check if user already exists (case-insensitive search)
     // Escape special regex characters in email
-    const escapedEmail = normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const existingUser = await Users.findOne({ 
-      email: { $regex: new RegExp(`^${escapedEmail}$`, 'i') }
-    });
+    const existingUser = await findUserByEmail(normalizedEmail);
     
     // If user already exists, just log them in (they might be re-verifying)
     if (existingUser) {
-      // Generate JWT with user id
-      const token = jwt.sign({ id: existingUser._id }, process.env.TOKEN_SECRET_KEY, { expiresIn: '1w' });
-
-      // Set token in HttpOnly cookie
-      res.cookie('token', token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'Strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
-      });
+      setAuthCookie(res, existingUser._id);
 
       return res.status(200).json({
         successful: true,
@@ -76,16 +157,7 @@ async function signup(req, res) {
       });
     }
 
-    // Generate JWT with only `id` in payload
-    const token = jwt.sign({ id: newUser._id }, process.env.TOKEN_SECRET_KEY, { expiresIn: '1w' });
-
-    // Set token in HttpOnly cookie
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'Strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
-    });
+    setAuthCookie(res, newUser._id);
 
     return res.status(201).json({
       successful: true,
@@ -101,12 +173,7 @@ async function signup(req, res) {
 
 function logout(req, res) {
   try {
-    res.cookie('token', '', {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'Strict',
-      maxAge: 0,
-    });
+    res.cookie(AUTH_COOKIE_NAME, '', getAuthCookieOptions(0));
     return res.status(200).json({
       successful: true,
       msg: 'logged out',
@@ -121,7 +188,7 @@ function logout(req, res) {
 
 async function getCurrentUser(req, res) {
   try {
-    const token = req.cookies?.token;
+    const token = req.cookies?.[AUTH_COOKIE_NAME];
     if (!token) {
       return res.status(401).json({
         successful: false,
@@ -163,6 +230,7 @@ async function getCurrentUser(req, res) {
 module.exports = {
   login,
   signup,
+  socialAuth,
   logout,
   getCurrentUser,
 }
