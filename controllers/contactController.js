@@ -9,7 +9,7 @@ const Users = require('../models/Users');
  */
 async function getAllMsgs(req, res) {
   try {
-    const contacts = await Contacts.find();
+    const contacts = await Contacts.findAll();
     return res.status(200).json({
       successful: true,
       data: contacts,
@@ -18,7 +18,7 @@ async function getAllMsgs(req, res) {
     return res.status(500).json({
       successful: false,
       msg: error.message,
-    })
+    });
   }
 }
 
@@ -30,16 +30,8 @@ async function getAllMsgs(req, res) {
 async function getMatchedMsgs(req, res) {
   try {
     const { search } = req.params;
-    const msgs = await Contacts.find({
-      $or: [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { subj: { $regex: search, $options: 'i' } },
-        { subj: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-      ],
-    });
-    return res.status(500).json({
+    const msgs = await Contacts.search(search);
+    return res.status(200).json({
       successful: true,
       data: msgs,
     });
@@ -53,12 +45,12 @@ async function getMatchedMsgs(req, res) {
 
 /**
  * @method GET
- * @description This method gets all un readed msgs only
+ * @description This method gets all unread msgs only
  * @access Private
  */
 async function getNewMsgs(req, res) {
   try {
-    const msgs = await Contacts.find({ isRead: false, });
+    const msgs = await Contacts.find({ isRead: false });
     return res.status(200).json({
       successful: true,
       data: msgs,
@@ -78,28 +70,34 @@ async function getNewMsgs(req, res) {
  */
 async function addNewMsg(req, res) {
   try {
+    let contactData = { ...req.body };
+
     if (req.body.isLoggedIn) {
-      const { token } = req.cookies;
-      const userId = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
-      const userData = await Users.findOne({ _id: userId.id });
-      const payload = {
-        ...req.body,
-        name: userData.name,
-        email: userData.email,
-        isAdmin: userData.isAdmin,
-        phone: userData.phone,
-        address: userData.address,
-        isLoggedIn: true,
-      };
-      const newContact = new Contacts({ ...payload, isLoggedIn: false, });
-      await newContact.save();
-      return res.status(201).json({
-        successful: true,
-        data: newContact,
-      });
+      const token = req.cookies?.token;
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
+          const userData = await Users.findById(decoded.id);
+          if (userData) {
+            contactData = {
+              ...contactData,
+              name: userData.name,
+              email: userData.email,
+              isAdmin: !!userData.isAdmin,
+              phone: userData.phone,
+              address: userData.address,
+              isLoggedIn: true,
+            };
+          }
+        } catch (err) {
+          console.error('Invalid token in contact form:', err.message);
+          // Continue as guest if token is invalid
+          contactData.isLoggedIn = false;
+        }
+      }
     }
-    const newContact = new Contacts(req.body);
-    await newContact.save();
+
+    const newContact = await Contacts.create(contactData);
     return res.status(201).json({
       successful: true,
       data: newContact,
@@ -120,31 +118,43 @@ async function addNewMsg(req, res) {
 async function removeMsg(req, res) {
   try {
     const { id } = req.params;
-    await Contacts.findByIdAndDelete(id);
+    const deleted = await Contacts.delete(id);
+    if (!deleted) {
+      return res.status(404).json({
+        successful: false,
+        msg: 'Contact message not found',
+      });
+    }
     return res.status(200).json({
       successful: true,
       msg: 'Contact deleted successfully!',
     });
   } catch (error) {
     return res.status(500).json({
-      sucessful: false,
+      successful: false,
       msg: error.message,
     });
   }
 }
 
 /**
- * @method GET
- * @description This method just modifing the msg to me readed
+ * @method PATCH
+ * @description This method marks the msg as read
  * @access Private
  */
 async function markAsRead(req, res) {
   try {
     const { id } = req.params;
-    await Contacts.findByIdAndUpdate(id, { isRead: true, });
+    const success = await Contacts.update(id, { isRead: true });
+    if (!success) {
+      return res.status(404).json({
+        successful: false,
+        msg: 'Contact message not found',
+      });
+    }
     return res.status(200).json({
       successful: true,
-      msg: 'Message is readed',
+      msg: 'Message is marked as read',
     });
   } catch (error) {
     return res.status(500).json({
@@ -161,7 +171,7 @@ async function markAsRead(req, res) {
  */
 async function getReadMsgs(req, res) {
   try {
-    const msgs = await Contacts.find({ isRead: true, });
+    const msgs = await Contacts.find({ isRead: true });
     return res.status(200).json({
       successful: true,
       data: msgs,
