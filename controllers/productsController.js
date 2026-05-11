@@ -9,8 +9,8 @@ const path = require('path');
  */
 async function getAllProducts(req, res) {
   try {
-    const products = await Products.find();
-    if (!Array.isArray(products) || products.length === 0)
+    const products = await Products.findAll();
+    if (!products || products.length === 0)
       return res.status(200).json({
         successful: false,
         msg: 'There is no products here'
@@ -34,10 +34,8 @@ async function getAllProducts(req, res) {
 async function getProductById(req, res) {
   try {
     const { id } = req.params;
-    let product;
-    try {
-      product = await Products.findById({ _id: id });
-    } catch (error) {
+    const product = await Products.findById(id);
+    if (!product) {
       return res.status(404).json({
         successful: false,
         msg: 'Item not found',
@@ -69,7 +67,7 @@ async function addProduct(req, res) {
     const colorsArr = JSON.parse(colors);
     const sizesArr = JSON.parse(sizes);
 
-    const newProduct = new Products({
+    await Products.create({
       title, desc,
       category, price,
       salePrice: price,
@@ -78,8 +76,6 @@ async function addProduct(req, res) {
       images: imgs,
       isFeatured: isFeatured === 'true' || isFeatured === true,
     });
-
-    await newProduct.save();
 
     return res.status(201).json({
       successful: true,
@@ -128,13 +124,13 @@ async function updateProduct(req, res) {
       }
     }
 
-    const imgs = req.files?.map(file => `/uploads/${file.filename}`) || [];
     if (imgs.length > 0) {
-      const existing = await Products.findById(id).select('images');
+      const existing = await Products.findById(id);
       update.images = Array.isArray(existing?.images) ? [...existing.images, ...imgs] : imgs;
     }
 
-    const updatedProduct = await Products.findByIdAndUpdate(id, update, { new: true });
+    const success = await Products.update(id, update);
+    const updatedProduct = success ? await Products.findById(id) : null;
 
     return res.status(200).json({
       successful: true,
@@ -180,7 +176,7 @@ async function deleteProduct(req, res) {
       }
     }
 
-    await Products.findByIdAndDelete(id);
+    await Products.delete(id);
     return res.status(200).json({
       successful: true,
       msg: 'Product deleted successfully',
@@ -202,15 +198,9 @@ async function matchWithTarget(req, res) {
   try {
     const { target } = req.params;
     
-    const matched = await Products.find({
-      $or: [
-        {category: { $regex: target, $options: 'i' } },
-        {title: { $regex: target, $options: 'i' }},
-        {desc: { $regex: target, $options: 'i' }},
-      ]
-    });
+    const matched = await Products.search(target);
     
-    if (Array.isArray(matched) && matched.length === 0)
+    if (!matched || matched.length === 0)
       return res.status(200).json({
         successful: false,
         msg: 'No products matched the target',
@@ -237,7 +227,7 @@ async function getProductsByCategory(req, res) {
   try {
     const category = decodeURI(req.params.category);
 
-    const products = await Products.find({ category });
+    const products = await Products.findByCategory(category);
 
     if (!products.length) {
       return res.status(200).json({
@@ -266,7 +256,7 @@ async function getProductsByCategory(req, res) {
  */
 async function getFeatured(req, res) {
   try {
-    const products = await Products.find({ isFeatured: true });
+    const products = await Products.findFeatured();
     return res.status(200).json({
       successful: true,
       data: products,

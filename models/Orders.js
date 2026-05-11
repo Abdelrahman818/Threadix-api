@@ -1,65 +1,36 @@
-const mongoose = require('mongoose');
-const Counter = require('./Counter');
+const db = require('../config/db');
 
-const schema = mongoose.Schema({
-  orderId: Number,
-  userId: String,
-  name: String,
-  email: String,
-  phone: String,
-  items: [{
-    productId: String,
-    name: String,
-    price: Number,
-    quantity: String,
-    color: {
-      type: String,
-      default: null,
-    },
-    size: {
-      type: String,
-      default: null,
-    },
-  }],
-  totalPrice: Number,
-  shippingPrice: {
-    type: Number,
-    default: 0,
-  },
-  paymentMethod: String,
-  paymentStatus: {
-    type: String,
-    default: 'unpaid',
-    enum: ['paid', 'unpaid', 'refunded'],
-  },
-  orderStatus: {
-    type: String,
-    default: 'pending',
-    enum: ['pending', 'in delivery', 'completed', 'cancelled'],
-  },
-  address: String,
-  note: String,
-}, {
-  timestamps: true,
-});
-
-// Pre-save hook to handle auto-incrementing orderId
-schema.pre('save', async function (next) {
-  if (!this.orderId) {
-    try {
-      const counter = await Counter.findOneAndUpdate(
-        { id: 'orderId' },
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true }
-      );
-      this.orderId = counter.seq;
-    } catch (error) {
-      return next(error);
-    }
+class OrdersModel {
+  static async findAll() {
+    const [rows] = await db.execute('SELECT * FROM orders ORDER BY createdAt DESC');
+    return rows;
   }
-  next();
-});
 
-const OrdersModel = mongoose.model('order', schema);
+  static async findById(id) {
+    const [rows] = await db.execute('SELECT * FROM orders WHERE id = ?', [id]);
+    return rows[0];
+  }
+
+  static async findByUserId(userId) {
+    const [rows] = await db.execute('SELECT * FROM orders WHERE userId = ? ORDER BY createdAt DESC', [userId]);
+    return rows;
+  }
+
+  static async create(orderData) {
+    const { userId, name, email, phone, items, totalPrice, shippingPrice = 0, paymentMethod, paymentStatus = 'unpaid', orderStatus = 'pending', address, note = null } = orderData;
+    const [result] = await db.execute(
+      'INSERT INTO orders (userId, name, email, phone, items, totalPrice, shippingPrice, paymentMethod, paymentStatus, orderStatus, address, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [userId, name, email, phone, JSON.stringify(items), totalPrice, shippingPrice, paymentMethod, paymentStatus, orderStatus, address, note]
+    );
+    return { id: result.insertId, ...orderData };
+  }
+
+  static async updateStatus(id, statusData) {
+    const fields = Object.keys(statusData).map(key => `${key} = ?`).join(', ');
+    const values = [...Object.values(statusData), id];
+    const [result] = await db.execute(`UPDATE orders SET ${fields} WHERE id = ?`, values);
+    return result.affectedRows > 0;
+  }
+}
 
 module.exports = OrdersModel;

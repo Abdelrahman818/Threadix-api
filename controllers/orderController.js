@@ -17,27 +17,15 @@ async function createOrder(req, res) {
       try {
         const payload = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
         userId = payload.id;
-        console.log('createOrder - User is logged in, userId:', userId);
       } catch (err) {
-        console.log('createOrder - Token verification failed:', err.message);
-        return res.status(401).json({
-          successful: false,
-          msg: 'Unauthorized',
-        });
+        return res.status(401).json({ successful: false, msg: 'Unauthorized' });
       }
-    } else {
-      console.log('createOrder - No token provided, order will be created without userId');
     }
 
     const orderData = { ...req.body };
-    if (userId) {
-      orderData.userId = userId;
-      console.log('createOrder - Adding userId to orderData');
-    }
+    if (userId) orderData.userId = userId;
 
-    const newOrder = new Orders(orderData);
-    await newOrder.save();
-    console.log('createOrder - Order saved:', newOrder._id, 'with userId:', newOrder.userId);
+    const newOrder = await Orders.create(orderData);
     
     return res.status(201).json({
       successful: true,
@@ -45,11 +33,7 @@ async function createOrder(req, res) {
       data: newOrder,
     });
   } catch (error) {
-    console.error('createOrder - Error:', error.message);
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
@@ -60,13 +44,12 @@ async function createOrder(req, res) {
  */
 async function getAllOrders(req, res) {
   try {
-    const orders = await Orders.find().sort({ createdAt: -1 });
+    const orders = await Orders.findAll();
     
-    // Populate missing product names/prices for old orders
     const enrichedOrders = await Promise.all(orders.map(async (order) => {
-      const orderObj = order.toObject();
-      if (orderObj.items) {
-        for (let item of orderObj.items) {
+      if (order.items) {
+        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        for (let item of items) {
           if (!item.name || !item.price) {
             const product = await Products.findById(item.productId);
             if (product) {
@@ -75,19 +58,14 @@ async function getAllOrders(req, res) {
             }
           }
         }
+        order.items = items;
       }
-      return orderObj;
+      return order;
     }));
 
-    return res.status(200).json({
-      successful: true,
-      data: enrichedOrders,
-    });
+    return res.status(200).json({ successful: true, data: enrichedOrders });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
@@ -98,53 +76,15 @@ async function getAllOrders(req, res) {
  */
 async function getUserOrders(req, res) {
   try {
-    // Get userId from req.userId (set by authorizingUser middleware)
     const userId = req.userId;
-    
-    console.log('getUserOrders called - userId:', userId);
+    if (!userId) return res.status(401).json({ successful: false, msg: 'Unauthorized' });
 
-    if (!userId) {
-      console.log('No userId found in request');
-      return res.status(401).json({
-        successful: false,
-        msg: 'Unauthorized',
-      });
-    }
+    const orders = await Orders.findByUserId(userId);
 
-    // First, try to find orders by userId
-    console.log('Searching for orders with userId:', userId);
-    let orders = await Orders.find({ userId }).sort({ createdAt: -1 });
-    console.log('Found orders by userId:', orders.length);
-
-    // If no orders found by userId, try to find by user's email (for backwards compatibility)
-    if (orders.length === 0) {
-      console.log('No orders found by userId, trying to search by email');
-      try {
-        const user = await Users.findById(userId);
-        if (user && user.email) {
-          console.log('Found user email:', user.email);
-          orders = await Orders.find({ email: user.email }).sort({ createdAt: -1 });
-          console.log('Found orders by email:', orders.length);
-          
-          // Update these orders with userId for future searches
-          if (orders.length > 0) {
-            console.log('Updating orders with userId for future queries');
-            await Orders.updateMany(
-              { email: user.email, userId: { $exists: false } },
-              { userId: userId }
-            );
-          }
-        }
-      } catch (emailError) {
-        console.error('Error searching by email:', emailError);
-      }
-    }
-
-    // Populate missing product names/prices for old orders
     const enrichedOrders = await Promise.all(orders.map(async (order) => {
-      const orderObj = order.toObject();
-      if (orderObj.items) {
-        for (let item of orderObj.items) {
+      if (order.items) {
+        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        for (let item of items) {
           if (!item.name || !item.price) {
             const product = await Products.findById(item.productId);
             if (product) {
@@ -153,45 +93,31 @@ async function getUserOrders(req, res) {
             }
           }
         }
+        order.items = items;
       }
-      return orderObj;
+      return order;
     }));
 
-    return res.status(200).json({
-      successful: true,
-      data: enrichedOrders,
-    });
+    return res.status(200).json({ successful: true, data: enrichedOrders });
   } catch (error) {
-    console.error('Error in getUserOrders:', error);
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
 /**
  * @method GET
- * @description This method gets an order by orderId (for tracking)
+ * @description This method gets an order by id (primary key)
  * @access Public
  */
 async function getOrderByOrderId(req, res) {
   try {
-    const { orderId } = req.params;
-    
-    if (!orderId) {
-      return res.status(400).json({
-        successful: false,
-        msg: 'Order ID is required',
-      });
-    }
-
-    const order = await Orders.findOne({ orderId: parseInt(orderId) });
+    const { orderId } = req.params; // This might be the primary key 'id' in SQL
+    const order = await Orders.findById(orderId);
 
     if (order) {
-      const orderObj = order.toObject();
-      if (orderObj.items) {
-        for (let item of orderObj.items) {
+      if (order.items) {
+        order.items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        for (let item of order.items) {
           if (!item.name || !item.price) {
             const product = await Products.findById(item.productId);
             if (product) {
@@ -201,21 +127,12 @@ async function getOrderByOrderId(req, res) {
           }
         }
       }
-      return res.status(200).json({
-        successful: true,
-        data: orderObj,
-      });
+      return res.status(200).json({ successful: true, data: order });
     }
 
-    return res.status(404).json({
-      successful: false,
-      msg: 'Order not found',
-    });
+    return res.status(404).json({ successful: false, msg: 'Order not found' });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
@@ -234,31 +151,16 @@ async function updateOrder(req, res) {
     if (paymentStatus) updateData.paymentStatus = paymentStatus;
 
     if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({
-        successful: false,
-        msg: 'No valid fields to update',
-      });
+      return res.status(400).json({ successful: false, msg: 'No valid fields to update' });
     }
 
-    const order = await Orders.findByIdAndUpdate(id, updateData, { new: true });
+    const success = await Orders.updateStatus(id, updateData);
+    if (!success) return res.status(404).json({ successful: false, msg: 'Order not found' });
 
-    if (!order) {
-      return res.status(404).json({
-        successful: false,
-        msg: 'Order not found',
-      });
-    }
-
-    return res.status(200).json({
-      successful: true,
-      msg: 'Order updated successfully',
-      data: order,
-    });
+    const updatedOrder = await Orders.findById(id);
+    return res.status(200).json({ successful: true, msg: 'Order updated successfully', data: updatedOrder });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 

@@ -36,9 +36,7 @@ function escapeRegex(value) {
 }
 
 async function findUserByEmail(email) {
-  return Users.findOne({
-    email: { $regex: new RegExp(`^${escapeRegex(email)}$`, 'i') },
-  });
+  return Users.findByEmail(normalizeEmail(email));
 }
 
 async function login(req, res) {
@@ -90,13 +88,13 @@ async function socialAuth(req, res) {
       });
     }
 
-    setAuthCookie(res, user._id);
+    setAuthCookie(res, user.id);
 
     return res.status(200).json({
       successful: true,
       msg: 'Logged in successfully',
       data: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         email: user.email,
         isAdmin: user.isAdmin,
@@ -115,6 +113,12 @@ async function signup(req, res) {
     const { name, email, pwd } = req.user;
 
     // Normalize email (lowercase and trim)
+
+async function signup(req, res) {
+  try {
+    const { name, email, pwd } = req.user;
+
+    // Normalize email (lowercase and trim)
     const normalizedEmail = normalizeEmail(email);
 
     // Check if user already exists (case-insensitive search)
@@ -123,7 +127,7 @@ async function signup(req, res) {
     
     // If user already exists, just log them in (they might be re-verifying)
     if (existingUser) {
-      setAuthCookie(res, existingUser._id);
+      setAuthCookie(res, existingUser.id);
 
       return res.status(200).json({
         successful: true,
@@ -136,28 +140,13 @@ async function signup(req, res) {
     const hashedPwd = await bcrypt.hash(pwd, salt);
 
     // Save user to database (use normalized email)
-    const newUser = new Users({
+    const newUser = await Users.create({
       name,
       email: normalizedEmail,
       pwd: hashedPwd,
     });
-    try {
-      await newUser.save();
-    } catch (err) {
-      // Handle duplicate email error from MongoDB
-      if (err.code === 11000) {
-        return res.status(400).json({
-          successful: false,
-          msg: 'User with this email already exists',
-        });
-      }
-      return res.status(500).json({
-        successful: false,
-        msg: 'Error saving user to database',
-      });
-    }
 
-    setAuthCookie(res, newUser._id);
+    setAuthCookie(res, newUser.id);
 
     return res.status(201).json({
       successful: true,
@@ -189,31 +178,6 @@ function logout(req, res) {
 async function getCurrentUser(req, res) {
   try {
     const token = req.cookies?.[AUTH_COOKIE_NAME];
-    if (!token) {
-      return res.status(401).json({
-        successful: false,
-        msg: 'No token provided',
-      });
-    }
-
-    let userId;
-    try {
-      const payload = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
-      userId = payload.id;
-    } catch (err) {
-      return res.status(401).json({
-        successful: false,
-        msg: 'Invalid or expired token',
-      });
-    }
-
-    const user = await Users.findById(userId).select('-pwd');
-    if (!user) {
-      return res.status(404).json({
-        successful: false,
-        msg: 'User not found',
-      });
-    }
 
     return res.status(200).json({
       successful: true,

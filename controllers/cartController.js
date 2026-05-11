@@ -9,70 +9,45 @@ const jwt = require('jsonwebtoken');
  */
 async function getUserCart(req, res) {
   try {
-    // Verify token from cookies
     const token = req.cookies?.token;
-    if (!token)
-      return res.status(401).json({
-        successful: false,
-        msg: 'No token provided',
-      });
+    if (!token) return res.status(401).json({ successful: false, msg: 'No token provided' });
 
     let userId;
     try {
       const payload = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
       userId = payload.id;
     } catch (err) {
-      return res.status(401).json({
-        successful: false,
-        msg: 'Invalid or expired token',
-      });
+      return res.status(401).json({ successful: false, msg: 'Invalid or expired token' });
     }
 
-    const cartDocs = await Cart.find({ userId });
+    const cartDoc = await Cart.findByUserId(userId);
+    if (!cartDoc || !cartDoc.items || cartDoc.items.length === 0) {
+      return res.status(200).json({ successful: true, msg: 'Cart is empty!', data: [] });
+    }
 
-    // If no cart documents, return empty array
-    if (!cartDocs || cartDocs.length === 0)
-      return res.status(200).json({
-        successful: true,
-        msg: 'Cart is empty!',
-        data: [],
-      });
-
-    // Flatten items from all cart documents and enrich with product data
-    const flatItems = [];
-    for (const cartDoc of cartDocs) {
-      if (cartDoc.items && Array.isArray(cartDoc.items)) {
-        for (const item of cartDoc.items) {
-          // Fetch product to get title, images, salePrice
-          const product = await Products.findById(item.productId);
-          if (product) {
-            flatItems.push({
-              id: item._id || item.productId,
-              productId: item.productId,
-              title: product.title,
-              name: product.title,
-              salePrice: product.salePrice,
-              image: product.images && product.images[0] ? product.images[0] : '',
-              quantity: parseInt(item.quantity) || 1,
-              color: item.color || null,
-              size: item.size || null,
-            });
-          }
-        }
+    const items = typeof cartDoc.items === 'string' ? JSON.parse(cartDoc.items) : cartDoc.items;
+    const enrichedItems = [];
+    
+    for (const item of items) {
+      const product = await Products.findById(item.productId);
+      if (product) {
+        enrichedItems.push({
+          id: item.productId,
+          productId: item.productId,
+          title: product.title,
+          name: product.title,
+          salePrice: product.salePrice,
+          image: product.images && product.images[0] ? product.images[0] : '',
+          quantity: parseInt(item.quantity) || 1,
+          color: item.color || null,
+          size: item.size || null,
+        });
       }
     }
 
-    // Return flattened cart items
-    return res.status(200).json({
-      successful: true,
-      data: flatItems,
-    });
-
+    return res.status(200).json({ successful: true, data: enrichedItems });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
@@ -83,75 +58,41 @@ async function getUserCart(req, res) {
  */
 async function addItemToCart(req, res) {
   try {
-    // Verify token from cookies
     const token = req.cookies?.token;
-    if (!token)
-      return res.status(401).json({
-        successful: false,
-        msg: 'No token provided',
-      });
+    if (!token) return res.status(401).json({ successful: false, msg: 'No token provided' });
 
     let userId;
     try {
       const payload = jwt.verify(token, process.env.TOKEN_SECRET_KEY);
       userId = payload.id;
     } catch (err) {
-      return res.status(401).json({
-        successful: false,
-        msg: 'Invalid or expired token',
-      });
+      return res.status(401).json({ successful: false, msg: 'Invalid or expired token' });
     }
 
     const { productId, quantity } = req.body;
+    if (!productId || !quantity) return res.status(400).json({ successful: false, msg: 'productId and quantity are required' });
 
-    if (!productId || !quantity)
-      return res.status(400).json({
-        successful: false,
-        msg: 'productId and quantity are required',
-      });
+    let cartDoc = await Cart.findByUserId(userId);
+    let items = cartDoc ? (typeof cartDoc.items === 'string' ? JSON.parse(cartDoc.items) : cartDoc.items) : [];
 
-    // Find or create user's cart
-    let userCart = await Cart.findOne({ userId });
-    if (!userCart) {
-      userCart = new Cart({ userId, items: [] });
-    }
-
-    // Threadix now treats product quantity as the only cart choice.
-    // Colors and sizes remain visible on product pages, but are not order variants.
-    const existingItemIndex = userCart.items.findIndex(
-      item => item.productId === productId
-    );
-
+    const existingItemIndex = items.findIndex(item => item.productId === productId);
     if (existingItemIndex > -1) {
-      // Increase quantity if item exists
-      userCart.items[existingItemIndex].quantity =
-        parseInt(userCart.items[existingItemIndex].quantity) + parseInt(quantity);
+      items[existingItemIndex].quantity = parseInt(items[existingItemIndex].quantity) + parseInt(quantity);
     } else {
-      // Add new item
-      userCart.items.push({
-        productId,
-        quantity: parseInt(quantity),
-      });
+      items.push({ productId, quantity: parseInt(quantity) });
     }
 
-    await userCart.save();
+    await Cart.createOrUpdate(userId, items);
 
-    return res.status(201).json({
-      successful: true,
-      msg: 'Item added to cart',
-      data: userCart,
-    });
+    return res.status(201).json({ successful: true, msg: 'Item added to cart', data: { userId, items } });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
 /**
  * @method PUT
- * @description This method deletes an item from the cart and contains userId and productId in params
+ * @description Remove item from cart
  * @access Private
  */
 async function removeItemFromCart(req, res) {
@@ -159,28 +100,23 @@ async function removeItemFromCart(req, res) {
     const userId = req.userId;
     const { itemId } = req.params;
 
-    const updatedCart = await Cart.findOneAndUpdate(
-      { userId },
-      { $pull: { items: { _id: itemId } } },
-      { new: true }
-    );
+    const cartDoc = await Cart.findByUserId(userId);
+    if (!cartDoc) return res.status(404).json({ successful: false, msg: 'Cart not found' });
 
-    return res.status(200).json({
-      successful: true,
-      msg: 'Item removed from cart',
-      data: updatedCart,
-    });
+    let items = typeof cartDoc.items === 'string' ? JSON.parse(cartDoc.items) : cartDoc.items;
+    items = items.filter(item => item.productId !== itemId);
+
+    await Cart.createOrUpdate(userId, items);
+
+    return res.status(200).json({ successful: true, msg: 'Item removed from cart', data: { userId, items } });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
 /**
  * @method PATCH
- * @description This method updates the quantity of an item in the cart
+ * @description Update quantity
  * @access Private
  */
 async function updateCartItemQuantity(req, res) {
@@ -189,36 +125,28 @@ async function updateCartItemQuantity(req, res) {
     const { itemId } = req.params;
     const { quantity } = req.body;
 
-    if (quantity < 1) {
-      return res.status(400).json({ successful: false, msg: 'Quantity must be at least 1' });
-    }
+    if (quantity < 1) return res.status(400).json({ successful: false, msg: 'Quantity must be at least 1' });
 
-    const updatedCart = await Cart.findOneAndUpdate(
-      { userId, "items._id": itemId },
-      { $set: { "items.$.quantity": quantity } },
-      { new: true }
-    );
+    const cartDoc = await Cart.findByUserId(userId);
+    if (!cartDoc) return res.status(404).json({ successful: false, msg: 'Cart not found' });
 
-    if (!updatedCart) {
-      return res.status(404).json({ successful: false, msg: 'Item not found in cart' });
-    }
+    let items = typeof cartDoc.items === 'string' ? JSON.parse(cartDoc.items) : cartDoc.items;
+    const itemIndex = items.findIndex(item => item.productId === itemId);
 
-    return res.status(200).json({
-      successful: true,
-      msg: 'Quantity updated',
-      data: updatedCart,
-    });
+    if (itemIndex === -1) return res.status(404).json({ successful: false, msg: 'Item not found in cart' });
+
+    items[itemIndex].quantity = quantity;
+    await Cart.createOrUpdate(userId, items);
+
+    return res.status(200).json({ successful: true, msg: 'Quantity updated', data: { userId, items } });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 
 /**
  * @method DELETE
- * @description This method clears the user's cart
+ * @description Clear cart
  * @access Private
  */
 async function clearCart(req, res) {
@@ -234,21 +162,11 @@ async function clearCart(req, res) {
       return res.status(401).json({ successful: false, msg: 'Invalid token' });
     }
 
-    const cart = await Cart.findOne({ userId });
-    if (cart) {
-      cart.items = [];
-      await cart.save();
-    }
+    await Cart.createOrUpdate(userId, []);
 
-    return res.status(200).json({
-      successful: true,
-      msg: 'Cart cleared successfully',
-    });
+    return res.status(200).json({ successful: true, msg: 'Cart cleared successfully' });
   } catch (error) {
-    return res.status(500).json({
-      successful: false,
-      msg: error.message,
-    });
+    return res.status(500).json({ successful: false, msg: error.message });
   }
 }
 

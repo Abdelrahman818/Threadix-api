@@ -1,17 +1,36 @@
-const mongoose = require('mongoose');
+const db = require('../config/db');
 
-const schema = mongoose.Schema({
-  name: {
-    type: String,
-    unique: true,
-  },
-  image: String,
-  isActive: Boolean,
-  imgUrl: String,
-}, {
-  timestamps: true,
-});
+class CategoriesModel {
+  static async findAll() {
+    const [rows] = await db.execute('SELECT * FROM categories');
+    return rows;
+  }
 
-const CatModel = mongoose.model('cat', schema);
+  static async create(categoryData) {
+    const { name, imgUrl = null, isActive = true } = categoryData;
+    const [result] = await db.execute(
+      'INSERT INTO categories (name, imgUrl, isActive) VALUES (?, ?, ?)',
+      [name, imgUrl, isActive]
+    );
+    return { id: result.insertId, ...categoryData };
+  }
 
-module.exports = CatModel;
+  static async findById(id) {
+    const [rows] = await db.execute('SELECT * FROM categories WHERE id = ?', [id]);
+    return rows[0];
+  }
+
+  static async update(id, updateData) {
+    const fields = Object.keys(updateData).map(key => `${key} = ?`).join(', ');
+    const values = [...Object.values(updateData), id];
+    const [result] = await db.execute(`UPDATE categories SET ${fields} WHERE id = ?`, values);
+    return result.affectedRows > 0;
+  }
+
+  static async delete(id) {
+    const [result] = await db.execute('DELETE FROM categories WHERE id = ?', [id]);
+    return result.affectedRows > 0;
+  }
+}
+
+module.exports = CategoriesModel;

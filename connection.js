@@ -2,12 +2,12 @@
 require('dotenv').config();
 
 // Preparing required modules
-const mongoose = require('mongoose');
 const express = require('express');
 const cors = require('cors');
 const cookies = require('cookie-parser');
 const helmet = require('helmet');
 const path = require('path');
+const db = require('./config/db');
 
 // App init
 const app = express();
@@ -47,15 +47,17 @@ app.use((err, req, res, next) => {
 });
 
 // Run server and Database connection
-try {
-  app.listen(PORT, () => console.log("Server is running at port " + PORT));
-  mongoose
-    .connect(process.env.DATABASE_CONNECTION_STRING)
-    .then(() => console.log('Database is connected successfully!!!'))
-    .catch((err) => {
-      console.error(err.message);
-      console.error('Something went wrong while connecting to MongoDB!!!');
-    });
-} catch (err) {
-  console.error(err.message);
-}
+const startServer = async () => {
+  try {
+    // Test database connection
+    await db.query('SELECT 1');
+    console.log('MySQL Database is connected successfully!!!');
+    
+    app.listen(PORT, () => console.log("Server is running at port " + PORT));
+  } catch (err) {
+    console.error('Failed to connect to MySQL:', err.message);
+    process.exit(1);
+  }
+};
+
+startServer();

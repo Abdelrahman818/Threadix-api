@@ -10,15 +10,13 @@ const path = require('path');
  */
 async function getAllCategories(req, res) {
   try {
-    const categories = await Cat.find();
+    const categories = await Cat.findAll();
     const payload = await Promise.all(
       categories.map(async (cat) => {
-        const productsCount = await Products.countDocuments({
-          category: cat.name,
-        });
+        const productsCount = await Products.countByCategory(cat.name);
 
         return {
-          _id: cat._id,
+          id: cat.id,
           name: cat.name,
           status: cat.isActive ? 'active' : 'inactive',
           isActive: cat.isActive,
@@ -47,10 +45,9 @@ async function getAllCategories(req, res) {
 async function addNewCategory(req, res) {
   try {
     const { name, status } = req.body;
-    const path = `/uploads/${req.file.filename}`;
+    const imgPath = `/uploads/${req.file.filename}`;
     const isActive = status === 'active' || status === 'true' || status === true;
-    const newCat = new Cat({ name, imgUrl: path, isActive });
-    await newCat.save();
+    const newCat = await Cat.create({ name, imgUrl: imgPath, isActive });
     return res.status(201).json({
       successful: true,
       data: newCat,
@@ -73,21 +70,21 @@ async function modifyCategory(req, res) {
     const { id } = req.params;
     const updateData = { ...req.body };
 
-    // If a new image is uploaded, update the imgUrl
     if (req.file) {
       updateData.imgUrl = `/uploads/${req.file.filename}`;
     }
 
-    // Convert status string to isActive boolean if provided
     if (updateData.status) {
       updateData.isActive = updateData.status === 'active' || updateData.status === 'true';
-      delete updateData.status; // Remove status as model uses isActive
+      delete updateData.status;
     }
 
-    const cat = await Cat.findByIdAndUpdate(id, updateData, { new: true });
+    await Cat.update(id, updateData);
+    const updatedCat = await Cat.findById(id);
+    
     return res.status(200).json({
       successful: true,
-      data: cat,
+      data: updatedCat,
     });
   } catch (error) {
     return res.status(500).json({
@@ -99,14 +96,13 @@ async function modifyCategory(req, res) {
 
 /**
  * @method DELETE
- * @description This mehtod deletes a categroy completely from the database
+ * @description This method deletes a category completely from the database
  * @access Private
  */
 async function removeCategory(req, res) {
   try {
     const { id } = req.params;
 
-    // Find category to get image path
     const category = await Cat.findById(id);
     if (!category) {
       return res.status(404).json({
@@ -115,7 +111,6 @@ async function removeCategory(req, res) {
       });
     }
 
-    // Delete image if exists
     if (category.imgUrl) {
       const absolutePath = path.join(__dirname, '..', category.imgUrl);
       try {
@@ -125,7 +120,7 @@ async function removeCategory(req, res) {
       }
     }
 
-    await Cat.findByIdAndDelete(id);
+    await Cat.delete(id);
     return res.status(200).json({
       successful: true,
       msg: 'Category is deleted successfully!',
